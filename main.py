@@ -5,6 +5,13 @@ from pytz import timezone
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
+from database.connection import get_connection
+from database.users import (
+    subscribe_user,
+    unsubscribe_user,
+    get_subscribed_users,
+    is_user_subscribed
+)
 
 load_dotenv()
 
@@ -15,11 +22,11 @@ bot = telebot.TeleBot(TOKEN)
 # ID беседы группы        ps (замените на реальный ID группового чата, куда нужно слать авто-рассылку)
 GROUP_CHAT_ID = os.getenv('GROUP_CHAT_ID')
 
-# множество для хранения ID пользователей, подписавшихся на личные напоминания
-subscribers = set()
 
 
 
+with get_connection() as conn:
+    print("Подключение к PostgreSQL успешно!")
 
 # логика определения четности недели
 def get_week_type(target_date=None):
@@ -124,7 +131,7 @@ def even_group_broadcast():
 
 def morning_personal_reminders():
     text = "⏰ **Утреннее напоминание о парах:**\n\n" + get_today_schedule_for_chat()
-    for user_id in subscribers:
+    for user_id in get_subscribed_users():
         try:
             bot.send_message(user_id, text, parse_mode="Markdown")
         except Exception as e:
@@ -133,7 +140,7 @@ def morning_personal_reminders():
 
 def even_personal_reminders():
     text = "⏰ **Вечернее напоминание о парах:**\n\n" + get_tomorrow_schedule_for_chat()
-    for user_id in subscribers:
+    for user_id in get_subscribed_users():
         try:
             bot.send_message(user_id, text, parse_mode="Markdown")
         except Exception as e:
@@ -199,19 +206,33 @@ def callback_inline(call):
             bot.answer_callback_query(call.id, text=alert_text, show_alert=True)
 
         elif call.data == 'sub_on':
-            if user_id in subscribers:
-                bot.answer_callback_query(call.id, "⚠️ Вы уже подписаны на напоминания!", show_alert=True)
+            if is_user_subscribed(user_id):
+                bot.answer_callback_query(
+                    call.id,
+                    "⚠️ Вы уже подписаны на напоминания!",
+                    show_alert=True
+                )
             else:
-                subscribers.add(user_id)
-                bot.send_message(user_id, "✅ Вы успешно подписались на ежедневные напоминания!")
+                subscribe_user(user_id)
+                bot.send_message(
+                    user_id,
+                    "✅ Вы успешно подписались на ежедневные напоминания!"
+                )
                 bot.answer_callback_query(call.id, "Вы успешно подписались!")
 
         elif call.data == 'sub_off':
-            if user_id not in subscribers:
-                bot.answer_callback_query(call.id, "⚠️ Вы и так не подписаны.", show_alert=True)
+            if not is_user_subscribed(user_id):
+                bot.answer_callback_query(
+                    call.id,
+                    "⚠️ Вы и так не подписаны.",
+                    show_alert=True
+                )
             else:
-                subscribers.discard(user_id)
-                bot.send_message(user_id, "❌ Вы отписались от ежедневных напоминаний.")
+                unsubscribe_user(user_id)
+                bot.send_message(
+                    user_id,
+                    "❌ Вы отписались от ежедневных напоминаний."
+                )
                 bot.answer_callback_query(call.id, "Вы отписались!")
 
     except telebot.apihelper.ApiTelegramException as e:
