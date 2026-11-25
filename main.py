@@ -1,9 +1,12 @@
 import datetime
 import os
+from dotenv import load_dotenv
 from pytz import timezone
 import telebot
 from telebot import types
 from apscheduler.schedulers.background import BackgroundScheduler
+
+load_dotenv()
 
 # инициализация бота
 TOKEN = os.getenv('BOT_TOKEN')
